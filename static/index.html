@@ -6,6 +6,17 @@
   </head>
   <script src="/static/htmx-1.9.9.js"></script>
   <body>
+    <h1>TrainWatch</h1>
     <p>Hello, world!</p>
+    <div id="user-input">
+      <form action="/search" method="POST">
+	<label for="car-number">Car number</label>
+	<input type="text" name="car-number" id="car-number"
+	       hx-post="/search"
+	       hx-target="#search-results" />
+      </form>
+    </div>
+    <div id="search-results">
+    </div>
   </body>
 </html>
