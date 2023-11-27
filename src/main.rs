@@ -1,29 +1,29 @@
-use std::collections::HashMap;
+mod mbta_api;
+mod routes;
 
-use warp::Filter;
+use std::{
+    collections::HashMap,
+    sync::{Arc, Mutex},
+};
+
+use mbta_api::loop_poll_data;
+use routes::routes;
+
+type CarNumber = String;
+type VehicleId = String;
+type CarNumberToVehicleId = Arc<Mutex<HashMap<CarNumber, VehicleId>>>;
 
 #[tokio::main]
 async fn main() {
-    let index = warp::get()
-        .and(warp::path::end())
-        .and(warp::fs::file("./static/index.html"));
+    let car_number_to_vehicle_id: CarNumberToVehicleId = Arc::new(Mutex::new(HashMap::new()));
 
-    let static_content = warp::get()
-        .and(warp::path("static"))
-        .and(warp::fs::dir("./static"));
+    {
+        let car_number_to_vehicle_id = car_number_to_vehicle_id.clone();
 
-    let search = warp::post()
-        .and(warp::path("search"))
-        .and(warp::path::end())
-        .and(warp::body::form())
-        .map(
-            |simple_map: HashMap<String, String>| match HashMap::get(&simple_map, "car-number") {
-                Option::Some(number) => number.clone(),
-                Option::None => "No car number given".to_string(),
-            },
-        );
+        tokio::spawn(async move {
+            loop_poll_data(&car_number_to_vehicle_id).await;
+        });
+    }
 
-    let routes = index.or(static_content).or(search);
-
-    warp::serve(routes).run(([127, 0, 0, 1], 3030)).await;
+    warp::serve(routes()).run(([127, 0, 0, 1], 3030)).await;
 }
