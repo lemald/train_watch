@@ -7,9 +7,15 @@ use tokio::time::{sleep, Duration};
 use crate::CarNumberToVehicleId;
 
 #[derive(Serialize, Deserialize, Debug)]
+struct Carriage {
+    label: String,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
 struct Vehicle {
     id: String,
     label: String,
+    carriages: Vec<Carriage>,
 }
 
 jsonapi_model!(Vehicle; "vehicle");
@@ -39,7 +45,7 @@ async fn poll_data(
     if let Some(data) = resp.data {
         if let PrimaryData::Multiple(vehicles) = data {
             for vehicle in vehicles.iter() {
-                let vehicle = Vehicle::from_jsonapi_resource(&vehicle, &None);
+                let vehicle = Vehicle::from_jsonapi_resource(&vehicle, &None)?;
                 println!("{:#?}", vehicle);
             }
         }
