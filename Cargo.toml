@@ -9,3 +9,6 @@ edition = "2021"
 tokio = { version = "1", features = ["full"] }
 warp = "0.3"
 reqwest = { version = "0.11", features = ["json"] }
+jsonapi = "0.7.0"
+serde = "1.0.193"
+serde_derive = "1.0.193"

@@ -1,6 +1,18 @@
+use jsonapi::api::*;
+use jsonapi::jsonapi_model;
+use jsonapi::model::*;
+use serde_derive::{Deserialize, Serialize};
 use tokio::time::{sleep, Duration};
 
 use crate::CarNumberToVehicleId;
+
+#[derive(Serialize, Deserialize, Debug)]
+struct Vehicle {
+    id: String,
+    label: String,
+}
+
+jsonapi_model!(Vehicle; "vehicle");
 
 pub async fn loop_poll_data(car_number_to_vehicle_id: &CarNumberToVehicleId) {
     loop {
@@ -19,10 +31,19 @@ pub async fn loop_poll_data(car_number_to_vehicle_id: &CarNumberToVehicleId) {
 async fn poll_data(
     _car_number_to_vehicle_id: &CarNumberToVehicleId,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let _resp = reqwest::get("https://api-v3.mbta.com/vehicles?filter[route]=Red")
+    let resp = reqwest::get("https://api-v3.mbta.com/vehicles?filter[route]=Red")
         .await?
-        .text()
+        .json::<DocumentData>()
         .await?;
+
+    if let Some(data) = resp.data {
+        if let PrimaryData::Multiple(vehicles) = data {
+            for vehicle in vehicles.iter() {
+                let vehicle = Vehicle::from_jsonapi_resource(&vehicle, &None);
+                println!("{:#?}", vehicle);
+            }
+        }
+    }
 
     Ok(())
 }
