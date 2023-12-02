@@ -44,24 +44,22 @@ async fn poll_data(
         .json::<DocumentData>()
         .await?;
 
-    if let Some(data) = resp.data {
-        if let PrimaryData::Multiple(vehicles) = data {
-            let mut car_number_to_vehicle_id = car_number_to_vehicle_id.lock().unwrap();
-            let mut car_numbers_present = HashSet::new();
+    if let Some(PrimaryData::Multiple(vehicles)) = resp.data {
+        let mut car_number_to_vehicle_id = car_number_to_vehicle_id.lock().unwrap();
+        let mut car_numbers_present = HashSet::new();
 
-            for vehicle in vehicles.iter() {
-                let vehicle = Vehicle::from_jsonapi_resource(&vehicle, &None)?;
+        for vehicle in vehicles.iter() {
+            let vehicle = Vehicle::from_jsonapi_resource(&vehicle, &None)?;
 
-                for carriage in vehicle.carriages.iter() {
-                    car_number_to_vehicle_id.insert(carriage.label.clone(), vehicle.id.clone());
-                    car_numbers_present.insert(carriage.label.clone());
-                }
+            for carriage in vehicle.carriages.iter() {
+                car_number_to_vehicle_id.insert(carriage.label.clone(), vehicle.id.clone());
+                car_numbers_present.insert(carriage.label.clone());
             }
-
-            car_number_to_vehicle_id.retain(|k, _| car_numbers_present.contains(&k.to_string()));
-
-            println!("{:#?}", car_number_to_vehicle_id);
         }
+
+        car_number_to_vehicle_id.retain(|k, _| car_numbers_present.contains(k));
+
+        println!("{:#?}", car_number_to_vehicle_id);
     }
 
     Ok(())
