@@ -5,8 +5,6 @@ use std::{
     sync::{Arc, Mutex},
 };
 
-use warp::Filter;
-
 use mbta_api::loop_poll_data;
 
 type CarNumber = String;
@@ -36,36 +34,102 @@ async fn main() {
 
     {
         let car_number_to_vehicle_id = car_number_to_vehicle_id.clone();
+        let vehicle_id_to_vehicle_status = vehicle_id_to_vehicle_status.clone();
 
         tokio::spawn(async move {
             loop_poll_data(&car_number_to_vehicle_id, &vehicle_id_to_vehicle_status).await;
         });
     }
 
-    warp::serve(routes()).run(([127, 0, 0, 1], 3030)).await;
+    warp::serve(filters::train_watch(
+        car_number_to_vehicle_id,
+        vehicle_id_to_vehicle_status,
+    ))
+    .run(([127, 0, 0, 1], 3030))
+    .await;
 }
 
-fn routes() -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
-    let index = warp::get()
-        .and(warp::path::end())
-        .and(warp::fs::file("./static/index.html"));
+mod filters {
+    use std::convert::Infallible;
 
-    let static_content = warp::get()
-        .and(warp::path("static"))
-        .and(warp::fs::dir("./static"));
+    use crate::handlers;
+    use crate::CarNumberToVehicleId;
+    use crate::VehicleIdToVehicleStatus;
 
-    let search = warp::post()
-        .and(warp::path("search"))
-        .and(warp::path::end())
-        .and(warp::body::content_length_limit(1024 * 16))
-        .and(warp::body::form())
-        .map(
-            |form: HashMap<String, String>| match HashMap::get(&form, "car-number") {
-                Some(number) => number.clone(),
-                None => "No car number given".to_string(),
-            },
-        )
-        .map(warp::reply::html);
+    use warp::Filter;
 
-    index.or(static_content).or(search)
+    fn index() -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
+        warp::get()
+            .and(warp::path::end())
+            .and(warp::fs::file("./static/index.html"))
+    }
+
+    fn static_content() -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone
+    {
+        warp::get()
+            .and(warp::path("static"))
+            .and(warp::fs::dir("./static"))
+    }
+
+    fn search(
+        car_number_to_vehicle_id: CarNumberToVehicleId,
+        vehicle_id_to_vehicle_status: VehicleIdToVehicleStatus,
+    ) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
+        warp::post()
+            .and(warp::path("search"))
+            .and(warp::path::end())
+            .and(warp::body::content_length_limit(1024 * 16))
+            .and(warp::body::form())
+            .and(with_car_number_to_vehicle_id(car_number_to_vehicle_id))
+            .and(with_vehicle_id_to_vehicle_status(
+                vehicle_id_to_vehicle_status,
+            ))
+            .map(handlers::search)
+    }
+
+    fn with_car_number_to_vehicle_id(
+        car_number_to_vehicle_id: CarNumberToVehicleId,
+    ) -> impl Filter<Extract = (CarNumberToVehicleId,), Error = Infallible> + Clone {
+        warp::any().map(move || car_number_to_vehicle_id.clone())
+    }
+
+    fn with_vehicle_id_to_vehicle_status(
+        vehicle_id_to_vehicle_status: VehicleIdToVehicleStatus,
+    ) -> impl Filter<Extract = (VehicleIdToVehicleStatus,), Error = Infallible> + Clone {
+        warp::any().map(move || vehicle_id_to_vehicle_status.clone())
+    }
+
+    pub fn train_watch(
+        car_number_to_vehicle_id: CarNumberToVehicleId,
+        vehicle_id_to_vehicle_status: VehicleIdToVehicleStatus,
+    ) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
+        index().or(static_content()).or(search(
+            car_number_to_vehicle_id.clone(),
+            vehicle_id_to_vehicle_status.clone(),
+        ))
+    }
+}
+
+mod handlers {
+    use std::collections::HashMap;
+    use std::convert::Infallible;
+
+    use crate::CarNumberToVehicleId;
+    use crate::VehicleIdToVehicleStatus;
+
+    pub fn search(
+        form: HashMap<String, String>,
+        car_number_to_vehicle_id: CarNumberToVehicleId,
+        vehicle_id_to_vehicle_status: VehicleIdToVehicleStatus,
+    ) -> Result<impl warp::Reply, Infallible> {
+        let car_number = form.get("car-number").unwrap();
+        let car_number_to_vehicle_id = car_number_to_vehicle_id.lock().unwrap();
+        let vehicle_id_to_vehicle_status = vehicle_id_to_vehicle_status.lock().unwrap();
+
+        let vehicle_id = car_number_to_vehicle_id.get(car_number).unwrap();
+
+        let vehicle_status = vehicle_id_to_vehicle_status.get(vehicle_id).unwrap();
+
+        Ok(warp::reply::html(vehicle_status.station_name.to_string()))
+    }
 }
